@@ -27,24 +27,33 @@ taxa = float(input("Informe a taxa negociada: "))
 #%% CONFIG
 url = "https://www.anbima.com.br/informacoes/est-termo/CZ-down.asp"
 max = 3600
-base_ano = 360
 tipo_curva = "PREFIXADOS"
-#%% DATABASE
-hoje = pd.Timestamp.today() # Obtém a data atual como um objeto Timestamp do Pandas
-data_util = hoje - pd.tseries.offsets.BDay(1) # Subtrai 1 dia útil (Business Day) pulando sábados e domingos
-data = data_util.strftime("%d%m%Y")# Converte de volta para a string de texto no formato "DDMMAAAA"
-#%% EXTRAÇÃO DOS PARÂMETROS
-data_formatada = f"{data[:2]}/{data[2:4]}/{data[4:]}" # Formatação da data exigida pelo formulário (DD/MM/AAAA)
-payload = {
-    'Idioma': 'PT',
-    'Dt_Ref': data_formatada,
-    'saida': 'csv'
-}
-response = requests.post(url, data=payload)# Realiza a requisição POST
-linhas_csv = response.text.splitlines()# Transformação do texto em lista iterável separada por quebras de linha
-linha_alvo = [linha for linha in linhas_csv if linha.startswith(tipo_curva)][0]# Busca linearmente a linha que começa com o tipo de curva desejado ("PREFIXADOS")
-colunas = linha_alvo.split(';')# Divide o texto da linha usando o ponto-e-vírgula como separador
-# Extrai e converte cada parâmetro (trocando vírgula decimal por ponto)
+#%% DATABASE + EXTRAÇÃO DOS PARÂMETROS
+data_teste = pd.Timestamp.today().normalize()
+
+while True:
+    data = data_teste.strftime("%d%m%Y")
+    data_formatada = data_teste.strftime("%d/%m/%Y")
+    
+    payload = {
+        'Idioma': 'PT',
+        'Dt_Ref': data_formatada,
+        'saida': 'csv'
+    }
+    
+    response = requests.post(url, data=payload)
+    linhas_csv = response.text.splitlines()
+    
+    linhas_filtradas = [linha for linha in linhas_csv if linha.startswith(tipo_curva)]
+    
+    if len(linhas_filtradas) > 0:
+        linha_alvo = linhas_filtradas[0]
+        break
+    else:
+        data_teste = data_teste - pd.tseries.offsets.BDay(1)
+
+colunas = linha_alvo.split(';')
+
 b1 = float(colunas[1].replace(',', '.'))
 b2 = float(colunas[2].replace(',', '.'))
 b3 = float(colunas[3].replace(',', '.'))
@@ -52,47 +61,67 @@ b4 = float(colunas[4].replace(',', '.'))
 l1 = float(colunas[5].replace(',', '.'))
 l2 = float(colunas[6].replace(',', '.'))
 #%% CÁLCULO DA CURVA DE SVENSSON (LINEAR)
-vertices = np.arange(1, max + 1)# Cria o vetor de vértices (de 1 até max) e converte para base anual
-t = vertices / base_ano
-# Aplicação da fórmula de Nelson-Siegel-Svensson diretamente (sem def)
+# Como a Anbima trabalha com dias úteis, o usuário agora digitará dias úteis no terminal.
+# Criamos um vetor que vai do dia 1 até o máximo de dias úteis projetados
+vertices_uteis = np.arange(1, max + 1)
+
+# O tempo (t) na fórmula de Svensson deve ser parametrizado como anos. 
+# A base do ano na Anbima é 252 dias úteis.
+t = vertices_uteis / 252
+
+# Aplicação da fórmula de Nelson-Siegel-Svensson diretamente
 termo1 = (1 - np.exp(-l1 * t)) / (l1 * t)
 termo2 = termo1 - np.exp(-l1 * t)
 termo3 = ((1 - np.exp(-l2 * t)) / (l2 * t)) - np.exp(-l2 * t)
+
 # Cálculo das taxas aplicando os betas sobre os termos calculados
 taxas = b1 + b2 * termo1 + b3 * termo2 + b4 * termo3
+
 #%% CONSOLIDA DATAFRAME
-df_curva = pd.DataFrame({'Vertice': vertices, 'Taxa': taxas})
+# Agora o "Vertice" do DataFrame significa Dias Úteis
+df_curva = pd.DataFrame({'Vertice': vertices_uteis, 'Taxa': taxas})
 df_curva = df_curva.set_index("Vertice")
 df_curva["Taxa"] = df_curva["Taxa"] * 100
-#%% 
-print(df_curva)
+
 #%% ENCONTRA O PRAZO NA CURVA 
+# A variável "prazo" (que o usuário digitou no terminal) agora significa prazo em DIAS ÚTEIS
 if prazo in df_curva.index:
     di_aa = df_curva.loc[prazo]
 else:
     di_aa = df_curva.loc[df_curva.index <= prazo].iloc[-1]
 #%% CÁLCULOS
 if modalidade == 1:
-    prazo_selecionado = int(di_aa.name)
+    prazo_selecionado = int(di_aa.name) # Prazo em dias úteis
     taxa_di = float(di_aa.values[0])
-    taxa_di_dia = ((1 + taxa_di / 100) ** (1/360) - 1) * 100
-    fator_di = (1 + taxa_di_dia / 100) ** prazo_selecionado
-    resultado_di = round(((fator_di - 1) * 100), 2)
-    taxa_contratada_dia = (taxa_di_dia * taxa / 100)
-    taxa_contratada_ano = (((1 + taxa_contratada_dia / 100) ** 360) - 1) * 100
-    fator_contratado = (1 + taxa_contratada_dia / 100) ** prazo_selecionado
-    resultado = round(((fator_contratado - 1) * 100) , 2)
+    # 1. Taxa DI diária (fator de 1 dia)
+    fator_di_diario = (1 + taxa_di / 100) ** (1 / 252)
+    
+    # 2. Resultado Acumulado do DI puro (só para exibição)
+    resultado_di = round((((fator_di_diario) ** prazo_selecionado) - 1) * 100, 2)
+    
+    # 3. Taxa Contratada Diária (Aqui aplicamos o percentual do usuário - ex: 110%)
+    fator_contratado_diario = (fator_di_diario - 1) * (taxa / 100) + 1
+    
+    # 4. Taxa Contratada Anualizada (projetada para 252 dias)
+    taxa_contratada_ano = ((fator_contratado_diario ** 252) - 1) * 100
+    
+    # 5. Resultado final do período do investimento
+    resultado = round((((fator_contratado_diario) ** prazo_selecionado) - 1) * 100, 2)
 elif modalidade == 2:
     prazo_selecionado = int(di_aa.name)
     taxa_di = float(di_aa.values[0])
-    taxa_di_dia = ((1 + taxa_di / 100) ** (1/360) - 1) * 100
-    fator_di = (1 + taxa_di_dia / 100) ** prazo_selecionado
-    resultado_di = round(((fator_di - 1) * 100), 2)
-    spread_dia = ((1 + taxa / 100) ** (1 / 360) - 1) * 100
-    taxa_dia = ((1 + taxa_di_dia / 100) * (1 + spread_dia / 100) - 1) * 100
-    taxa_ano = (((1 + taxa_dia / 100) ** 360) - 1) * 100
-    fator_spread = (1 + taxa_dia / 100) ** prazo_selecionado
-    resultado = round(((fator_spread - 1) * 100), 2)
+    
+    fator_di_diario = (1 + taxa_di / 100) ** (1 / 252)
+    resultado_di = round((((fator_di_diario) ** prazo_selecionado) - 1) * 100, 2)
+    
+    # Descapitaliza o spread fixo do usuário (ex: + 1.5% a.a.) para spread diário
+    fator_spread_diario = (1 + taxa / 100) ** (1 / 252)
+    
+    # O produto CDI + Taxa é a multiplicação dos fatores diários
+    fator_misto_diario = fator_di_diario * fator_spread_diario
+    
+    taxa_ano = ((fator_misto_diario ** 252) - 1) * 100
+    resultado = round((((fator_misto_diario) ** prazo_selecionado) - 1) * 100, 2)
 print("-*" * 25)
 print("RESULTADO")
 print("-*" * 25)
@@ -102,9 +131,9 @@ print(f"Vértice utilizado: {prazo_selecionado} dias\n" )
 print(f"DI a.a. estimado: {taxa_di:.2f}% a.a.")
 print(f"Resultado do DI estimado: {resultado_di}%\n")
 if modalidade == 1:
-    print(f"Retorno anual estimado: {taxa_contratada_ano:.2f}% a.a.")
+    print(f"Retorno anual estimado: {taxa_contratada_ano:.3f}% a.a.")
 elif modalidade == 2:
-    print(f"Retorno anual estimado: {taxa_ano:.2f}% a.a.")
+    print(f"Retorno anual estimado: {taxa_ano:.3f}% a.a.")
 print(f"Resultado estimado da aplicação: {resultado}%")
 print(" ")
 print("-*" * 25)
