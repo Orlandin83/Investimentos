@@ -22,8 +22,8 @@ def submeter():
     try:
         p = int(prazo_var.get())
         float(taxa_var.get().replace(',', '.'))
-        if not (1 <= p <= 3600):
-            messagebox.showwarning("Aviso", "O prazo deve ser entre 1 e 3600 dias úteis.")
+        if not (1 <= p <= 10000):
+            messagebox.showwarning("Aviso", "O prazo deve ser entre 1 e 10000 dias úteis.")
             return
         dados_validos = True
         root.quit()
@@ -57,7 +57,7 @@ root.destroy()
 
 #%% CONFIG
 url = "https://www.anbima.com.br/informacoes/est-termo/CZ-down.asp"
-max_dias = 3600
+max_dias = 10000
 tipo_curva = "PREFIXADOS"
 
 #%% DATABASE + EXTRAÇÃO DOS PARÂMETROS

@@ -18,15 +18,15 @@ while True:
               "[1] - % do CDI\n"
               "[2] - CDI + Taxa Fixa")
 while True:
-    prazo = int(input("Informe o prazo em dias corridos de 1 a 3600 dias: "))
-    if 1 <= prazo <= 3600:
+    prazo = int(input("Informe o prazo em dias corridos de 1 a 10000 dias: "))
+    if 1 <= prazo <= 10000:
         break
     else:
-        print("Informe um prazo de 1 a 3600 dias")
+        print("Informe um prazo de 1 a 10000 dias")
 taxa = float(input("Informe a taxa negociada: "))
 #%% CONFIG
 url = "https://www.anbima.com.br/informacoes/est-termo/CZ-down.asp"
-max = 3600
+max = 10000
 tipo_curva = "PREFIXADOS"
 #%% DATABASE + EXTRAÇÃO DOS PARÂMETROS
 data_teste = pd.Timestamp.today().normalize()
