@@ -12,3 +12,14 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# Arquivos e pastas do PyInstaller
+build/
+dist/
+*.spec
+*.exe
+*.app
+
+# Cache nativo do Python
+__pycache__/
+*.pyc
