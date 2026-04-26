@@ -7,18 +7,21 @@ import pandas as pd
 #%% ENTRADA DE DADOS
 while True:
     modalidade = int(input("Informe a modalidade:\n"
-                        "[1] - % do CDI\n"
-                        "[2] - CDI + Taxa Fixa\n"
+                        "[1] - % do CDI (Ex. 80% do CDI)\n"
+                        "[2] - CDI + Taxa Fixa (Ex. CDI + 1%)\n"
+                        "[3] - Taxa Pré (Ex. 11% a.a.\n"
                         "Modalidade: "
-    ))
-    if modalidade in (1,2):
+                    ))
+    if modalidade in (1,2,3):
         break
     else:
         print("Digite uma opção válida:\n"
-              "[1] - % do CDI\n"
-              "[2] - CDI + Taxa Fixa")
+              "[1] - % do CDI (Ex. 80% do CDI)\n"
+              "[2] - CDI + Taxa Fixa (Ex. CDI + 1%)\n"
+              "[3] - Taxa Pré (Ex. 11% a.a.\n"
+        )
 while True:
-    prazo = int(input("Informe o prazo em dias corridos de 1 a 10000 dias: "))
+    prazo = int(input("Informe o prazo em dias úteis de 1 a 10000 dias: "))
     if 1 <= prazo <= 10000:
         break
     else:
@@ -122,6 +125,22 @@ elif modalidade == 2:
     
     taxa_ano = ((fator_misto_diario ** 252) - 1) * 100
     resultado = round((((fator_misto_diario) ** prazo_selecionado) - 1) * 100, 2)
+elif modalidade == 3:
+    prazo_selecionado = int(di_aa.name)
+    taxa_di = float(di_aa.values[0])
+    
+    # 1. Calcula o DI apenas para efeito de comparação (benchmark)
+    fator_di_diario = (1 + taxa_di / 100) ** (1 / 252)
+    resultado_di = round((((fator_di_diario) ** prazo_selecionado) - 1) * 100, 2)
+    
+    # 2. Descapitaliza a taxa pré-fixada do usuário (ex: 11% a.a.) para taxa diária
+    pre_diario = (1 + taxa / 100) ** (1 / 252)
+    
+    # 3. A taxa anual projetada é a própria taxa pré-fixada informada
+    taxa_ano = ((pre_diario ** 252) - 1) * 100
+    
+    # 4. O resultado da aplicação usa APENAS o fator pré-fixado diário (sem multiplicar pelo CDI)
+    resultado = round((((pre_diario) ** prazo_selecionado) - 1) * 100, 2)
 print("-*" * 25)
 print("RESULTADO")
 print("-*" * 25)
